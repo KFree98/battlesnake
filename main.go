@@ -50,21 +50,6 @@ func move(state GameState) BattlesnakeMoveResponse {
 	// We've included code to prevent your Battlesnake from moving backwards
 	myHead := state.You.Body[0] // Coordinates of your head
 	myNeck := state.You.Body[1] // Coordinates of your "neck"
-	log.Println("head", myHead)
-	log.Println("neck", myNeck)
-	// // Left
-	// if myNeck.X < myHead.X { // Neck is left of head, don't move left
-	// 	isMoveSafe["left"] = false
-
-	// } else if myNeck.X > myHead.X { // Neck is right of head, don't move right
-	// 	isMoveSafe["right"] = false
-
-	// } else if myNeck.Y < myHead.Y { // Neck is below head, don't move down
-	// 	isMoveSafe["down"] = false
-
-	// } else if myNeck.Y > myHead.Y { // Neck is above head, don't move up
-	// 	isMoveSafe["up"] = false
-	// }
 
 	// TODO: Step 1 - Prevent your Battlesnake from moving out of bounds
 	boardWidth := state.Board.Width
@@ -82,7 +67,7 @@ func move(state GameState) BattlesnakeMoveResponse {
 
 	if len(safeMoves) == 0 {
 		log.Printf("MOVE %d: No safe moves detected! Moving down\n", state.Turn)
-		return BattlesnakeMoveResponse{Move: "down"}
+		return BattlesnakeMoveResponse{Move: "down", Shout: "** PaNiK!! **"}
 	}
 
 	// Choose a random move from the safe ones
