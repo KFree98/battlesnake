@@ -55,7 +55,7 @@ func move(state GameState) BattlesnakeMoveResponse {
 	boardWidth := state.Board.Width
 	boardHeight := state.Board.Height
 	// borderCoords := generateBorderCoords(boardWidth, boardHeight)
-	safeMoves := getAvailableMoves(myHead, myNeck, boardWidth, boardHeight, state.You.Body)
+	safeMoves := getAvailableMoves(myHead, myNeck, boardWidth, boardHeight, state, state.You.Body)
 	log.Println("Safe moves", len(safeMoves))
 	// TODO: Step 2 - Prevent your Battlesnake from colliding with itself
 	// mybody := state.You.Body
@@ -84,7 +84,7 @@ func main() {
 	RunServer()
 }
 
-func getAvailableMoves(head, neck Coord, boardWidth, boardHeight int, body []Coord) []Move {
+func getAvailableMoves(head, neck Coord, boardWidth, boardHeight int, state GameState, body []Coord) []Move {
 
 	// Define all potential moves with directions
 	potentialMoves := []Move{
@@ -114,6 +114,18 @@ func getAvailableMoves(head, neck Coord, boardWidth, boardHeight int, body []Coo
 				break
 			}
 		}
+
+		// Check if move collides with any other snake
+		for _, snake := range state.Board.Snakes {
+			for _, segment := range snake.Body {
+				if move.Coord == segment {
+					move.Safe = false
+					log.Println("Snake collision for move", move)
+					continue
+				}
+			}
+		}
+
 	}
 
 	var safeMoves []Move
@@ -123,6 +135,5 @@ func getAvailableMoves(head, neck Coord, boardWidth, boardHeight int, body []Coo
 		}
 	}
 
-	log.Println(safeMoves)
 	return safeMoves
 }
