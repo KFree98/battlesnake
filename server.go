@@ -65,7 +65,7 @@ func HandleEnd(w http.ResponseWriter, r *http.Request) {
 
 // Middleware
 
-const ServerID = "battlesnake/github/starter-snake-go"
+const ServerID = "kfree98/battlesnake"
 
 func withServerID(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

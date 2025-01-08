@@ -82,3 +82,7 @@ type Move struct {
 	Direction string
 	Safe      bool
 }
+
+type EnemyMoves struct {
+	Coords []Coord
+}
