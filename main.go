@@ -51,9 +51,7 @@ func move(state GameState) BattlesnakeMoveResponse {
 
 	// Calculate the available moves
 	SafeMoves := getMySafeMoves(myHead, myNeck, boardWidth, boardHeight, state, state.You.Body)
-	EnemyMoves := getEnemyPotentialMoves(state)
-
-	FinalSafeMoves := AvoidHeadToHeads(SafeMoves, EnemyMoves, state)
+	FinalSafeMoves := ResolveHeadToHeads(SafeMoves, state)
 
 	log.Println("Safe moves", len(FinalSafeMoves))
 
@@ -103,7 +101,7 @@ func getEnemyPotentialMoves(state GameState) []EnemyMoves {
 		}
 
 		// Append to the enemy moves list
-		enemyMoves = append(enemyMoves, EnemyMoves{Coords: coords})
+		enemyMoves = append(enemyMoves, EnemyMoves{Coords: coords, EnemyId: snake.ID})
 	}
 
 	return enemyMoves
@@ -130,32 +128,56 @@ func getPotentialMoveCoords(head, neck Coord) []Move {
 	return potentialMoves
 }
 
-func AvoidHeadToHeads(safeMoves []Move, enemyMoves []EnemyMoves, state GameState) []Move {
-	// Create a map to store all enemy move coordinates for fast lookup
-	enemyCoordsMap := make(map[Coord]bool)
+func ResolveHeadToHeads(safeMoves []Move, state GameState) []Move {
+	// Get all enemy moves with their IDs
+	enemyMoves := getEnemyPotentialMoves(state)
 
-	// Populate the map with enemy move coordinates
+	// Create a map to store enemy move coordinates mapped to their snake IDs
+	enemyCoordsMap := make(map[Coord]string)
+
+	// Populate the map with enemy move coordinates and their corresponding IDs
 	for _, enemy := range enemyMoves {
 		for _, coord := range enemy.Coords {
-			enemyCoordsMap[coord] = true
+			enemyCoordsMap[coord] = enemy.EnemyId
 		}
 	}
 
-	// Iterate through your safe moves and mark conflicts as unsafe
-	for i := range safeMoves {
-		if enemyCoordsMap[safeMoves[i].Coord] {
-			safeMoves[i].Safe = false
-			log.Println("Snake: %s Avoiding head-to-head collision for move", state.You.Name, safeMoves[i])
-		}
-	}
-
+	var attackMoves []Move
 	var finalSafeMoves []Move
-	for _, move := range safeMoves {
+
+	// Iterate through your safe moves
+	for i := range safeMoves {
+		move := &safeMoves[i]
+		if enemyID, exists := enemyCoordsMap[move.Coord]; exists {
+			// Find the enemy snake by ID
+			for _, enemy := range state.Board.Snakes {
+				if enemy.ID == enemyID {
+					// If your snake is longer, prioritize attacking this enemy
+					if len(state.You.Body) > len(enemy.Body) {
+						log.Printf("Snake: %s Attacking smaller snake: %s with move: %v", state.You.Name, enemy.Name, move)
+						attackMoves = append(attackMoves, *move)
+					} else {
+						// Mark as unsafe if the enemy is larger or equal
+						move.Safe = false
+						log.Printf("Snake: %s Avoiding head-to-head collision with larger snake: %s for move: %v", state.You.Name, enemy.Name, move)
+					}
+
+				}
+			}
+		}
+
+		// Add safe moves to the final list
 		if move.Safe {
-			finalSafeMoves = append(finalSafeMoves, move)
+			finalSafeMoves = append(finalSafeMoves, *move)
 		}
 	}
 
+	// If attack moves exist, prioritize and return them
+	if len(attackMoves) > 0 {
+		return attackMoves
+	}
+
+	// Otherwise, return the remaining safe moves
 	return finalSafeMoves
 }
 

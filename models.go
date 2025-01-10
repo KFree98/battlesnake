@@ -84,5 +84,6 @@ type Move struct {
 }
 
 type EnemyMoves struct {
-	Coords []Coord
+	Coords  []Coord
+	EnemyId string
 }
