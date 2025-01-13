@@ -77,13 +77,31 @@ type BattlesnakeMoveResponse struct {
 	Shout string `json:"shout"`
 }
 
-type Move struct {
-	Coord     Coord
-	Direction string
-	Safe      bool
+type GameBoard struct {
+	ID      string
+	GameID  string
+	SnakeID string
+	Width   int
+	Height  int
+	Grid    [][]Node
+
+	visited   [][]bool
+	costSoFar [][]int
 }
 
-type EnemyMoves struct {
-	Coords  []Coord
-	EnemyId string
+// Node represents a single cell in the grid
+type Node struct {
+	X      int
+	Y      int
+	Danger int // 0 goal, 1 clear path, 2 danger, 3 never path
 }
+
+type PriorityQueueItem struct {
+	Coord     Coord
+	Priority  int
+	CostSoFar int
+}
+
+type PriorityQueue []*PriorityQueueItem
+
+type Grid [][]Node

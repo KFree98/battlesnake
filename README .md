@@ -1,20 +1,9 @@
-# Battlesnake Go Starter Project
+# Battlesnake
 
-An official Battlesnake template written in Go. Get started at [play.battlesnake.com](https://play.battlesnake.com).
 
-![Battlesnake Logo](https://media.battlesnake.com/social/StarterSnakeGitHubRepos_Go.png)
+## How to run this Battlesnake
 
-This project is a great starting point for anyone wanting to program their first Battlesnake in Go. It can be run locally or easily deployed to a cloud provider of your choosing. See the [Battlesnake API Docs](https://docs.battlesnake.com/api) for more detail. 
-
-[![Run on Replit](https://repl.it/badge/github/BattlesnakeOfficial/starter-snake-go)](https://replit.com/@Battlesnake/starter-snake-go)
-
-## Technologies Used
-
-This project uses [Go](https://go.dev/). It also comes with an optional [Dockerfile](https://docs.docker.com/engine/reference/builder/) to help with deployment.
-
-## Run Your Battlesnake
-
-Start your Battlesnake
+Start the Battlesnake
 
 ```sh
 go run .
