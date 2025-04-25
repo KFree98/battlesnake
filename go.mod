@@ -1,4 +1,4 @@
-module github.com/BattlesnakeOfficial/starter-snake-go
+module github.com/KFree98/battlesnake
 
 go 1.21
 

@@ -8,7 +8,6 @@ import (
 )
 
 // HTTP Handlers
-
 func HandleIndex(w http.ResponseWriter, r *http.Request) {
 	response := info()
 
@@ -26,10 +25,7 @@ func HandleStart(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ERROR: Failed to decode start json, %s", err)
 		return
 	}
-
 	start(state)
-
-	// Nothing to respond with here
 }
 
 func HandleMove(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,5 @@
 # Battlesnake
 
-
 ## How to run this Battlesnake
 
 Start the Battlesnake
@@ -18,19 +17,32 @@ Running your Battlesnake at http://0.0.0.0:8000
 Open [localhost:8000](http://localhost:8000) in your browser and you should see
 
 ```json
-{"apiversion":"1","author":"","color":"#888888","head":"default","tail":"default"}
+{
+  "apiversion": "1",
+  "author": "",
+  "color": "#888888",
+  "head": "default",
+  "tail": "default"
+}
 ```
 
 ## Play a Game Locally
 
 Install the [Battlesnake CLI](https://github.com/BattlesnakeOfficial/rules/tree/main/cli)
-* You can [download compiled binaries here](https://github.com/BattlesnakeOfficial/rules/releases)
-* or [install as a go package](https://github.com/BattlesnakeOfficial/rules/tree/main/cli#installation) (requires Go 1.18 or higher)
+
+- You can [download compiled binaries here](https://github.com/BattlesnakeOfficial/rules/releases)
+- or [install as a go package](https://github.com/BattlesnakeOfficial/rules/tree/main/cli#installation) (requires Go 1.18 or higher)
 
 Command to run a local game
 
 ```sh
-battlesnake play -W 11 -H 11 --name 'Go Starter Project' --url http://localhost:8000 -g solo --browser
+battlesnake play -W 11 -H 11 --name 'Dev Snake' --url http://localhost:8000 -g solo --browser
+```
+
+to test against real snakes add the url
+
+```sh
+battlesnake play -W 11 -H 11 --name 'Dev Snake' --url http://localhost:8000 --name 'V1 Snake' --url https://snakev1.kfreeman.xyz --name 'V2 Snake' --url https://snakev2.kfreeman.xyz --browser
 ```
 
 ## Next Steps

@@ -61,9 +61,6 @@ type RulesetSettings struct {
 	HazardDamagePerTurn int `json:"hazardDamagePerTurn"`
 }
 
-// Response Objects
-// https://docs.battlesnake.com/api
-
 type BattlesnakeInfoResponse struct {
 	APIVersion string `json:"apiversion"`
 	Author     string `json:"author"`
@@ -77,31 +74,34 @@ type BattlesnakeMoveResponse struct {
 	Shout string `json:"shout"`
 }
 
+// Response Objects
+// https://docs.battlesnake.com/api
+
+// MY TYPES
+
 type GameBoard struct {
-	ID      string
-	GameID  string
-	SnakeID string
-	Width   int
-	Height  int
-	Grid    [][]Node
-
-	visited   [][]bool
-	costSoFar [][]int
+	ID           string
+	GameID       string
+	SnakeID      string
+	Width        int
+	Height       int
+	Grid         [][]Node
+	PreviousPlan Plan
 }
-
-// Node represents a single cell in the grid
 type Node struct {
-	X      int
-	Y      int
-	Danger int // 0 goal, 1 clear path, 2 danger, 3 never path
+	X       int
+	Y       int
+	Content int // 0 food, 1 clear path, 2 arena hazard, 3 snake body, 4 enemy snake head, 5 wall
 }
-
-type PriorityQueueItem struct {
-	Coord     Coord
-	Priority  int
-	CostSoFar int
+type Moves struct {
+	Direction string
+	X         int
+	Y         int
 }
-
-type PriorityQueue []*PriorityQueueItem
-
-type Grid [][]Node
+type Plan struct {
+	Action        string
+	Weight        int
+	TurnsExecuted int
+}
+type ForesightMove struct {
+}

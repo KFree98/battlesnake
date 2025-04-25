@@ -1,10 +1,12 @@
 package main
 
 import (
-	"container/heap"
 	"fmt"
 	"log"
+	"math/rand"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -14,6 +16,18 @@ var (
 	gameBoardsMu sync.RWMutex // Thread safety
 )
 
+var debug = true
+
+func trace(name string) func() {
+	if !debug {
+		return func() {}
+	}
+	start := time.Now()
+	return func() {
+		log.Printf("%s took %s", name, time.Since(start))
+	}
+}
+
 // -- API Responses --------------------------------------------------
 
 func info() BattlesnakeInfoResponse {
@@ -21,8 +35,8 @@ func info() BattlesnakeInfoResponse {
 		APIVersion: "1",
 		Author:     "kfree98",
 		Color:      "#FF0000",
-		Head:       "pixel",
-		Tail:       "pixel",
+		Head:       "pixel-round",
+		Tail:       "pixel-round",
 	}
 }
 
@@ -34,8 +48,9 @@ func start(state GameState) {
 	log.Println("##############################################################")
 
 	newBoard := NewGameBoard(state.Game.ID, state.You.ID, state.Board.Width, state.Board.Height)
-	UpdateGameBoard(state.Game.ID, state)
+
 	AddGameBoard(newBoard)
+
 }
 
 func end(state GameState) {
@@ -46,6 +61,7 @@ func end(state GameState) {
 // -- Game Board Lookup ---------------------------------------------
 
 func GetGameBoard(gameID, snakeID string) string {
+	defer trace("GetGameBoard")()
 	gameBoardsMu.RLock()
 	defer gameBoardsMu.RUnlock()
 
@@ -58,12 +74,14 @@ func GetGameBoard(gameID, snakeID string) string {
 }
 
 func AddGameBoard(gameBoard *GameBoard) {
+	defer trace("AddGameBoard")()
 	gameBoardsMu.Lock()
 	defer gameBoardsMu.Unlock()
 	gameBoards[gameBoard.ID] = gameBoard
 }
 
 func RemoveGameBoard(id string) error {
+	defer trace("RemoveGameBoard")()
 	gameBoardsMu.Lock()
 	defer gameBoardsMu.Unlock()
 
@@ -77,51 +95,44 @@ func RemoveGameBoard(id string) error {
 // -- Main Handler --------------------------------------------------
 
 func move(state GameState) BattlesnakeMoveResponse {
+	defer trace("move")()
 	gameBoardsMu.RLock() // Look up the board under read-lock
 	gameBoardID := GetGameBoard(state.Game.ID, state.You.ID)
-	board, exists := gameBoards[gameBoardID]
 	gameBoardsMu.RUnlock()
 
-	if !exists {
-		log.Printf("Game board with ID %s not found", gameBoardID)
-		return BattlesnakeMoveResponse{Move: "left"}
+	// Get the max execution time
+	maxExecutionTime := state.Game.Timeout
+
+	// Get last moves latency
+	latency, err := strconv.Atoi(state.You.Latency)
+	if err != nil {
+		log.Printf("Error converting latency to int: %v", err)
+		latency = 0 // Default to 0 if conversion fails
 	}
+	lastMoveLatency := latency
+
+	thisTurnExecutionTime := maxExecutionTime - ((lastMoveLatency * 2) + 10) // double the latency and add 10ms for safety
+	log.Printf("Max execution time: %d", thisTurnExecutionTime)
 
 	// Update board state
 	UpdateGameBoard(gameBoardID, state)
 
-	start := state.You.Head
+	// Get the game board
+	currentBoard := gameBoards[gameBoardID]
+	currentBoard.DrawBoard()
 
-	if state.You.Health < 40 {
-		// Low health => try to get food first
-		moveDir, foodFound := Move_GetFood(board, start, state.Board.Food)
-		if foodFound {
-			log.Println("Moving to food")
-			return BattlesnakeMoveResponse{Move: moveDir}
-		}
-		moveDir, attackFound := Move_Attack(board, start, state.You.Length, state.Board.Snakes)
-		if attackFound {
-			log.Println("Moving to attack")
-			return BattlesnakeMoveResponse{Move: moveDir}
-		}
-		log.Printf("No path to goal found")
-		return BattlesnakeMoveResponse{Move: getFallbackMove(board, start)}
+	// Get the safe instant moves
+	safeMoves := currentBoard.GetSafeMoves(state.Board.Snakes, state.You.ID)
 
-	} else {
-		// Otherwise => try to attack first
-		moveDir, attackFound := Move_Attack(board, start, state.You.Length, state.Board.Snakes)
-		if attackFound {
-			log.Println("Moving to attack")
-			return BattlesnakeMoveResponse{Move: moveDir}
-		}
-		moveDir, foodFound := Move_GetFood(board, start, state.Board.Food)
-		if foodFound {
-			log.Println("Moving to food")
-			return BattlesnakeMoveResponse{Move: moveDir}
-		}
-		log.Printf("No path to goal found")
-		return BattlesnakeMoveResponse{Move: getFallbackMove(board, start)}
+	if len(safeMoves) == 0 {
+		log.Println("No safe moves available")
+		return BattlesnakeMoveResponse{Move: "up", Shout: "Oh no..."}
 	}
+
+	randomMove := rand.Intn(len(safeMoves))
+
+	return BattlesnakeMoveResponse{Move: safeMoves[randomMove].Direction}
+
 }
 
 func main() {
@@ -131,40 +142,39 @@ func main() {
 // -- Data Structures & Board Setup ---------------------------------
 
 func NewGameBoard(gameID, snakeID string, width, height int) *GameBoard {
+	defer trace("NewGameBoard")()
+
+	// Create a new game board with the given dimensions
 	grid := make([][]Node, height)
 	for y := 0; y < height; y++ {
+		// Initialize each row of the grid
 		grid[y] = make([]Node, width)
+		// Initialize each node in the row
 		for x := 0; x < width; x++ {
+
 			grid[y][x] = Node{
-				X:      x,
-				Y:      y,
-				Danger: 1,
+				X:       x,
+				Y:       y,
+				Content: 1, // lower is better. 0 is goal, 1 is clear path, 2 is danger, 3 is never path
 			}
+
 		}
 	}
 
-	// Preallocate visited & costSoFar arrays
-	visited := make([][]bool, height)
-	costSoFar := make([][]int, height)
-	for y := 0; y < height; y++ {
-		visited[y] = make([]bool, width)
-		costSoFar[y] = make([]int, width)
-	}
-
 	return &GameBoard{
-		ID:        uuid.New().String(),
-		GameID:    gameID,
-		SnakeID:   snakeID,
-		Width:     width,
-		Height:    height,
-		Grid:      grid,
-		visited:   visited,
-		costSoFar: costSoFar,
+		ID:      uuid.New().String(),
+		GameID:  gameID,
+		SnakeID: snakeID,
+		Width:   width,
+		Height:  height,
+		Grid:    grid,
 	}
 }
 
 // Update the board’s danger values
 func UpdateGameBoard(id string, state GameState) error {
+	defer trace("UpdateGameBoard")()
+
 	gameBoardsMu.RLock()
 	board, exists := gameBoards[id]
 	gameBoardsMu.RUnlock()
@@ -174,154 +184,128 @@ func UpdateGameBoard(id string, state GameState) error {
 	}
 
 	// Reset the grid’s Danger
+	var wg sync.WaitGroup
+	wg.Add(board.Height)
 	for y := 0; y < board.Height; y++ {
-		for x := 0; x < board.Width; x++ {
-			board.Grid[y][x].Danger = 1
-		}
+		go func(y int) {
+			defer wg.Done()
+			for x := range board.Grid[y] {
+				board.Grid[y][x].Content = 1
+			}
+		}(y)
 	}
+	wg.Wait()
 
 	// Mark snake positions
-	for _, snake := range state.Board.Snakes {
-		for i, bodyCoord := range snake.Body {
-			if bodyCoord.Y < 0 || bodyCoord.Y >= board.Height ||
-				bodyCoord.X < 0 || bodyCoord.X >= board.Width {
-				continue
-			}
-			node := &board.Grid[bodyCoord.Y][bodyCoord.X]
+	for _, s := range state.Board.Snakes {
+		wg.Add(1)
+		go func(snake Battlesnake) {
+			defer wg.Done()
 
-			// Head vs Body
-			if i > 0 {
-				// Body
-				node.Danger = 3 // unpathable
-			} else if snake.ID != state.You.ID && snake.Length < state.You.Length {
-				node.Danger = 0 // smaller enemy head => low Danger => potential target
-			} else {
-				node.Danger = 2 // your head or bigger enemy => dangerous
+			if snake.Health == 0 {
+				return
 			}
-		}
+
+			for snakeBodyIndex, coord := range snake.Body {
+				node := &board.Grid[coord.Y][coord.X]
+				// Mark the snake body
+				if snakeBodyIndex == 0 {
+					// Head
+					node.Content = 4 // Snake head
+				} else {
+					node.Content = 3 // Snake body
+				}
+			}
+		}(s)
 	}
+	wg.Wait()
 
 	// Mark hazards
+	wg.Add(len(state.Board.Hazards))
 	for _, hazard := range state.Board.Hazards {
-		if hazard.Y < 0 || hazard.Y >= board.Height ||
-			hazard.X < 0 || hazard.X >= board.Width {
-			continue
-		}
-		board.Grid[hazard.Y][hazard.X].Danger = 3
+		go func(hazard Coord) {
+			defer wg.Done()
+			board.Grid[hazard.Y][hazard.X].Content = 2 // Arena Hazard
+		}(hazard)
+	}
+	wg.Wait()
+
+	// Mark food
+	wg.Add(len(state.Board.Food))
+	for _, food := range state.Board.Food {
+		go func(food Coord) {
+			defer wg.Done()
+			board.Grid[food.Y][food.X].Content = 0 // Food
+		}(food)
 	}
 
 	return nil
 }
 
-// -- Pathfinding ----------------------------------------------------
-// Directions: up=(0,+1), down=(0,-1), left=(-1,0), right=(+1,0)
-
-func FindSafestPath(board *GameBoard, start, target Coord) ([]Coord, bool) {
-	if start == target {
-		return []Coord{start}, true
-	}
-
-	directions := []Coord{{0, 1}, {0, -1}, {-1, 0}, {1, 0}}
-	for y := 0; y < board.Height; y++ {
+func (board *GameBoard) DrawBoard() {
+	for y := board.Height - 1; y >= 0; y-- {
 		for x := 0; x < board.Width; x++ {
-			board.visited[y][x] = false
-			board.costSoFar[y][x] = 1_000_000_000
-		}
-	}
-	board.costSoFar[start.Y][start.X] = board.Grid[start.Y][start.X].Danger
-
-	pq := &PriorityQueue{}
-	heap.Init(pq)
-	heap.Push(pq, &PriorityQueueItem{
-		Coord:     start,
-		Priority:  board.costSoFar[start.Y][start.X] + heuristic(start, target),
-		CostSoFar: board.costSoFar[start.Y][start.X],
-	})
-
-	cameFrom := make(map[Coord]Coord, board.Width*board.Height)
-
-	for pq.Len() > 0 {
-		current := heap.Pop(pq).(*PriorityQueueItem)
-		cx, cy := current.Coord.X, current.Coord.Y
-
-		if current.Coord == target {
-			path := reconstructPath(start, current.Coord, cameFrom)
-			log.Printf("Path found from %v to %v: %v", start, target, path)
-			return path, true
-		}
-
-		if board.visited[cy][cx] {
-			continue
-		}
-		board.visited[cy][cx] = true
-
-		for _, d := range directions {
-			nx, ny := cx+d.X, cy+d.Y
-			if nx < 0 || nx >= board.Width || ny < 0 || ny >= board.Height {
-				continue
-			}
-
-			if board.Grid[ny][nx].Danger == 3 {
-				continue
-			}
-
-			newCost := current.CostSoFar + board.Grid[ny][nx].Danger
-			if newCost < board.costSoFar[ny][nx] {
-				board.costSoFar[ny][nx] = newCost
-				cameFrom[Coord{X: nx, Y: ny}] = current.Coord
-				heap.Push(pq, &PriorityQueueItem{
-					Coord:     Coord{X: nx, Y: ny},
-					Priority:  newCost + heuristic(Coord{X: nx, Y: ny}, target),
-					CostSoFar: newCost,
-				})
+			switch board.Grid[y][x].Content {
+			case 0:
+				fmt.Print("G") // Food
+			case 1:
+				fmt.Print(".") // Clear path
+			case 2:
+				fmt.Print("^") // Hazard
+			case 3:
+				fmt.Print("@") // Snake body
+			case 4:
+				fmt.Print("!") // Snake head
+			default:
+				fmt.Print("?")
 			}
 		}
+		fmt.Println()
 	}
-
-	log.Printf("No path found from %v to %v", start, target)
-	return nil, false
 }
 
-func reconstructPath(start, end Coord, cameFrom map[Coord]Coord) []Coord {
-	path := []Coord{}
-	for c := end; c != start; c = cameFrom[c] {
-		path = append(path, c)
-	}
-	path = append(path, start)
+// Get the safe moves for a snake. uses the snake ID
+func (board *GameBoard) GetSafeMoves(snakes []Battlesnake, snakeId string) []Moves {
+	defer trace("GetSafeMoves")()
 
-	// Reverse the slice in-place
-	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-		path[i], path[j] = path[j], path[i]
-	}
-	return path
-}
+	// Find the snake in the list of snakes
+	var snakeBody []Coord
 
-// -- Movement Helpers -----------------------------------------------
+	for _, snake := range snakes {
+		if snake.ID == snakeId {
+			snakeBody = snake.Body
+			break
+		}
+	}
 
-func Move_GetFood(board *GameBoard, start Coord, food []Coord) (string, bool) {
-	target, err := FindClosestFoodByHeuristic(board, start, food)
-	if err != nil {
-		return "", false
-	}
-	nextCoord, found := FindSafestPath(board, start, target)
-	if !found || len(nextCoord) == 0 {
-		return "", false
-	}
-	direction := directionTo(start, nextCoord[1])
-	return direction, true
-}
+	head := snakeBody[0]
 
-func Move_Attack(board *GameBoard, start Coord, myLength int, snakes []Battlesnake) (string, bool) {
-	target, found := FindClosestSmallerSnake(board, start, myLength, snakes)
-	if !found {
-		return "", false
+	safeMoves := []Moves{
+		{Direction: "up", X: head.X, Y: head.Y + 1},
+		{Direction: "down", X: head.X, Y: head.Y - 1},
+		{Direction: "left", X: head.X - 1, Y: head.Y},
+		{Direction: "right", X: head.X + 1, Y: head.Y},
 	}
-	nextCoord, pathFound := FindSafestPath(board, start, target)
-	if !pathFound || len(nextCoord) == 0 {
-		return "", false
+
+	// Check if any direction collides with any snake's body
+	for _, snakes := range snakes {
+
+		if snakes.Health == 0 {
+			continue // Skip dead snakes
+		}
+		for _, coord := range snakes.Body {
+			for k, move := range safeMoves {
+				if move.X == coord.X && move.Y == coord.Y {
+					safeMoves = removeUnordered(safeMoves, k) // Eliminate this move
+				}
+				if move.X < 0 || move.X >= board.Width || move.Y < 0 || move.Y >= board.Height {
+					safeMoves = removeUnordered(safeMoves, k) // Eliminate this move
+				}
+			}
+		}
 	}
-	direction := directionTo(start, nextCoord[1])
-	return direction, true
+
+	return safeMoves
 }
 
 func directionTo(from, to Coord) string {
@@ -337,112 +321,15 @@ func directionTo(from, to Coord) string {
 	if to.Y < from.Y {
 		return "down"
 	}
-	log.Printf("No direction found from %v to %v, defaulting to 'down'", from, to)
-	return "down" // Fallback
+	return "none"
+
 }
 
-// getFallbackMove tries all four directions and picks the one with the lowest Danger
-func getFallbackMove(board *GameBoard, start Coord) string {
-	directions := [4]string{"up", "down", "left", "right"}
-	// (dx, dy) for the bottom-left origin system:
-	deltas := [4][2]int{
-		{0, 1},  // up
-		{0, -1}, // down
-		{-1, 0}, // left
-		{1, 0},  // right
+// -- Helper Functions ---------------------------------------------
+func removeUnordered[T any](s []T, i int) []T {
+	if i < 0 || i >= len(s) {
+		return s
 	}
-	minDanger := int(^uint(0) >> 1)
-	bestMove := "left"
-
-	for i, dir := range directions {
-		nx := start.X + deltas[i][0]
-		ny := start.Y + deltas[i][1]
-		if nx >= 0 && nx < board.Width && ny >= 0 && ny < board.Height {
-			danger := board.Grid[ny][nx].Danger
-			if danger < minDanger {
-				minDanger = danger
-				bestMove = dir
-			}
-		}
-	}
-
-	log.Println("Fallback move used:", bestMove)
-	return bestMove
-}
-
-// -- Distance & Heuristic -------------------------------------------
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-// Manhattan distance from a to b
-func heuristic(a, b Coord) int {
-	dx := abs(a.X - b.X)
-	dy := abs(a.Y - b.Y)
-	return dx + dy
-}
-
-// -- Food & Snake Helpers -------------------------------------------
-
-func FindClosestFoodByHeuristic(board *GameBoard, start Coord, food []Coord) (Coord, error) {
-	closestFood := Coord{}
-	minDistance := int(^uint(0) >> 1) // max int
-
-	for _, f := range food {
-		dist := heuristic(start, f)
-		if dist < minDistance {
-			minDistance = dist
-			closestFood = f
-		}
-	}
-
-	if minDistance == int(^uint(0)>>1) {
-		log.Println("No Food Found")
-		return Coord{}, fmt.Errorf("no food found")
-	}
-	return closestFood, nil
-}
-
-func FindClosestSmallerSnake(board *GameBoard, start Coord, myLength int, snakes []Battlesnake) (Coord, bool) {
-	closestSnake := Coord{}
-	minDistance := int(^uint(0) >> 1)
-
-	for _, snake := range snakes {
-		if snake.Length >= myLength {
-			continue
-		}
-		enemyHead := snake.Body[0]
-		dist := heuristic(start, enemyHead)
-		if dist < minDistance {
-			minDistance = dist
-			closestSnake = enemyHead
-		}
-	}
-
-	if minDistance == int(^uint(0)>>1) {
-		return Coord{}, false
-	}
-	return closestSnake, true
-}
-
-// -- PriorityQueue --------------------------------------------------
-
-func (pq PriorityQueue) Len() int           { return len(pq) }
-func (pq PriorityQueue) Less(i, j int) bool { return pq[i].Priority < pq[j].Priority }
-func (pq PriorityQueue) Swap(i, j int)      { pq[i], pq[j] = pq[j], pq[i] }
-
-func (pq *PriorityQueue) Push(x any) {
-	*pq = append(*pq, x.(*PriorityQueueItem))
-}
-
-func (pq *PriorityQueue) Pop() any {
-	old := *pq
-	n := len(old)
-	item := old[n-1]
-	*pq = old[:n-1]
-	return item
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
